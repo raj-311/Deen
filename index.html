@@ -12,6 +12,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
@@ -331,27 +332,23 @@ function checkReminders(){
   
   Object.entries(reminders).forEach(([catId, arr]) => {
     arr.forEach(r => {
-      // রিমাইন্ডার তখনই বাজবে যদি সময় মিলে যায় এবং ওই মিনিটে আগে না বেজে থাকে
       if(r.time === currentTime && !r.lastTriggeredDate?.includes(currentTime)){
         const catName = categories.find(c=>c.id===catId)?.name || 'Task';
         
-        // ১. অডিও বাজানো
         const audio = document.getElementById('alarmSound');
         audio.play().catch(() => {
-            // ব্রাউজার যদি অডিও ব্লক করে তবে কনসোলে জানাবে
             console.log("Audio play requires user interaction first.");
         });
 
-        // ২. সিস্টেম নোটিফিকেশন পাঠানো
         if ('Notification' in window && Notification.permission === 'granted') {
             const n = new Notification('Islamic Routine Reminder', {
-                body: `এখন ${catName} এর সময়!`,
+                body: `এখন ${catName} এর সময়!`,
                 icon: 'https://cdn-icons-png.flaticon.com/512/2662/2662306.png',
-                tag: 'routine-alert', // ডুপ্লিকেট নোটিফিকেশন রোধ করতে
-                requireInteraction: true // ব্যবহারকারী ক্লিক না করা পর্যন্ত থাকবে
+                tag: 'routine-alert', 
+                requireInteraction: true 
             });
         } else {
-            alert(`রিমাইন্ডার: ${catName} এর সময় হয়েছে!`);
+            alert(`রিমাইন্ডার: ${catName} এর সময় হয়েছে!`);
         }
         
         r.lastTriggeredDate = new Date().toISOString().slice(0,10) + " " + currentTime;
@@ -361,14 +358,12 @@ function checkReminders(){
   });
 }
 
-// নোটিফিকেশন পারমিশন চাওয়া
 if ('Notification' in window) {
     if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
         Notification.requestPermission();
     }
 }
 
-// প্রতি ২০ সেকেন্ড অন্তর চেক করা (যাতে মিস না হয়)
 setInterval(checkReminders, 20000);
 
 // --------------------------- Charts ---------------------------
@@ -400,15 +395,36 @@ function updateCharts(){
 function applyTheme(){ document.documentElement.classList.remove('light','dark'); document.documentElement.classList.add(theme); }
 themeToggle.addEventListener('click', ()=>{ theme = theme==='light'?'dark':'light'; lsSet(STORAGE_KEYS.theme, theme); applyTheme(); });
 
-// --------------------------- Export ---------------------------
+// --------------------------- Export (সম্পূর্ণ ঠিক করা হয়েছে) ---------------------------
 exportPdfBtn.addEventListener('click', () => {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF('l', 'mm', 'a4');
-  const selected = new Date(selectedDateInput.value);
-  const monthName = selected.toLocaleString('default', { month: 'long' });
-  doc.text(`Report: ${monthName} ${selected.getFullYear()}`, 14, 15);
-  doc.save(`report.pdf`);
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const date = selectedDateInput.value;
+  
+  doc.setFontSize(18);
+  doc.text("Islamic Routine Report", 14, 20);
+  doc.setFontSize(12);
+  doc.text(`Date: ${date}`, 14, 30);
+
+  // টেবিলের জন্য ডেটা তৈরি
+  const tableRows = categories.map(cat => {
+    const sum = entries.filter(e => e.date === date && e.categoryId === cat.id).reduce((s, e) => s + e.value, 0);
+    const progress = Math.min(100, (sum / (cat.goal || 1)) * 100).toFixed(0) + '%';
+    return [cat.name, sum, cat.goal, cat.unit, progress];
+  });
+
+  // autoTable ব্যবহার করে টেবিল রেন্ডার করা
+  doc.autoTable({
+    startY: 35,
+    head: [['Category', 'Achieved', 'Goal', 'Unit', 'Progress']],
+    body: tableRows,
+    theme: 'striped',
+    headStyles: { fillColor: [31, 41, 55] }
+  });
+
+  doc.save(`Routine_Report_${date}.pdf`);
 });
+
 exportXlsxBtn.addEventListener('click', () => {
   const ws = XLSX.utils.json_to_sheet(entries);
   const wb = XLSX.utils.book_new();
@@ -425,19 +441,18 @@ selectedDateInput.addEventListener('change', updateAll);
 // --------------------------- Update All ---------------------------
 function updateAll(){ renderCategories(); renderEntries(); renderCategoriesList(); updateCharts(); }
 applyTheme(); updateAll();
-// Service Worker Registration
+
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js')
     .then(() => console.log("Service Worker Registered"))
     .catch(err => console.log("Service Worker Failed", err));
 }
 
-// Manifest link add (Head section এ থাকলে ভালো, তবে স্ক্রিপ্ট দিয়েও করা যায়)
 const link = document.createElement('link');
 link.rel = 'manifest';
 link.href = 'manifest.json';
 document.head.appendChild(link);
 
 </script>
-</body>
+</body> 
 </html>
