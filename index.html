@@ -395,43 +395,247 @@ function updateCharts(){
 function applyTheme(){ document.documentElement.classList.remove('light','dark'); document.documentElement.classList.add(theme); }
 themeToggle.addEventListener('click', ()=>{ theme = theme==='light'?'dark':'light'; lsSet(STORAGE_KEYS.theme, theme); applyTheme(); });
 
-// --------------------------- Export (সম্পূর্ণ ঠিক করা হয়েছে) ---------------------------
+// --------------------------- Export (Monthly Report) ---------------------------
+
+function getMonthlyEntries() {
+
+const selected = new Date(selectedDateInput.value);
+
+const month = selected.getMonth();
+
+const year = selected.getFullYear();
+
+return entries.filter(e => {
+
+const d = new Date(e.date);
+
+return d.getMonth() === month && d.getFullYear() === year;
+
+});
+
+}
+
+function formatLocalDate(date) {
+
+const y = date.getFullYear();
+
+const m = String(date.getMonth() + 1).padStart(2, '0');
+
+const d = String(date.getDate()).padStart(2, '0');
+
+return `${y}-${m}-${d}`;
+
+}
+
 exportPdfBtn.addEventListener('click', () => {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const date = selectedDateInput.value;
-  
-  doc.setFontSize(18);
-  doc.text("Islamic Routine Report", 14, 20);
-  doc.setFontSize(12);
-  doc.text(`Date: ${date}`, 14, 30);
 
-  // টেবিলের জন্য ডেটা তৈরি
-  const tableRows = categories.map(cat => {
-    const sum = entries.filter(e => e.date === date && e.categoryId === cat.id).reduce((s, e) => s + e.value, 0);
-    const progress = Math.min(100, (sum / (cat.goal || 1)) * 100).toFixed(0) + '%';
-    return [cat.name, sum, cat.goal, cat.unit, progress];
-  });
+const { jsPDF } = window.jspdf;
 
-  // autoTable ব্যবহার করে টেবিল রেন্ডার করা
-  doc.autoTable({
-    startY: 35,
-    head: [['Category', 'Achieved', 'Goal', 'Unit', 'Progress']],
-    body: tableRows,
-    theme: 'striped',
-    headStyles: { fillColor: [31, 41, 55] }
-  });
+const doc = new jsPDF('l', 'mm', 'a4'); // landscape for more space
 
-  doc.save(`Routine_Report_${date}.pdf`);
+
+
+const selected = new Date(selectedDateInput.value);
+
+const month = selected.getMonth();
+
+const year = selected.getFullYear();
+
+const monthName = selected.toLocaleString('default', { month: 'long' });
+
+
+
+doc.setFontSize(16);
+
+doc.text(`Monthly Report: ${monthName} ${year}`, 14, 15);
+
+
+
+// 📌 Get all dates in month
+
+const dates = [];
+
+const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+for (let i = 1; i <= daysInMonth; i++) {
+
+const d = new Date(year, month, i);
+
+dates.push(formatLocalDate(d));
+
+}
+
+
+
+// 📌 Build table data
+
+const table = [];
+
+
+
+// Header row
+
+const header = ['Date', ...categories.map(c => c.name)];
+
+table.push(header);
+
+
+
+// Rows
+
+dates.forEach(date => {
+
+const row = [date];
+
+
+
+categories.forEach(cat => {
+
+const sum = entries
+
+.filter(e => e.date === date && e.categoryId === cat.id)
+
+.reduce((s, e) => s + e.value, 0);
+
+
+
+row.push(sum || '');
+
+});
+
+
+
+table.push(row);
+
+});
+
+
+
+// 📌 Draw table manually (one page auto-fit)
+
+const startX = 10;
+
+let startY = 20;
+
+
+
+const margin = 10;
+
+const pageWidth = doc.internal.pageSize.width;
+
+const pageHeight = doc.internal.pageSize.height;
+
+
+
+// total columns
+
+const totalCols = 1 + categories.length;
+
+
+
+// total rows (header + dates)
+
+const totalRows = table.length;
+
+
+
+// auto width & height calculation
+
+const cellWidth = (pageWidth - margin * 2) / totalCols;
+
+const cellHeight = Math.min(6, (pageHeight - 30) / totalRows);
+
+
+
+// auto font scaling
+
+const fontSize = Math.max(4, Math.min(8, cellHeight * 0.8));
+
+doc.setFontSize(10);
+
+
+
+// draw table
+
+table.forEach((row, rowIndex) => {
+
+row.forEach((cell, colIndex) => {
+
+const x = startX + colIndex * cellWidth;
+
+const y = startY + rowIndex * cellHeight;
+
+
+
+// border
+
+doc.rect(x, y, cellWidth, cellHeight);
+
+
+
+// text (centered)
+
+doc.text(String(cell), x + cellWidth / 2, y + cellHeight / 2, {
+
+align: 'center',
+
+baseline: 'middle'
+
+});
+
+});
+
+});
+
+
+
+doc.save(`routine_report_${monthName}_${year}.pdf`);
+
 });
 
 exportXlsxBtn.addEventListener('click', () => {
-  const ws = XLSX.utils.json_to_sheet(entries);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Report');
-  XLSX.writeFile(wb, `report.xlsx`);
+
+const selected = new Date(selectedDateInput.value);
+
+const monthName = selected.toLocaleString('default', { month: 'long' });
+
+const year = selected.getFullYear();
+
+
+
+const ws_data = [['Date', 'Category', 'Value', 'Unit']];
+
+const monthlyEntries = getMonthlyEntries();
+
+
+
+if (monthlyEntries.length === 0) {
+
+ws_data.push(['-', 'No entries this month', '-', '-']);
+
+} else {
+
+monthlyEntries.forEach(e => {
+
+const cat = categories.find(c => c.id === e.categoryId) || { name: e.categoryId, unit: '' };
+
+ws_data.push([e.date, cat.name, e.value, cat.unit]);
+
 });
 
+}
+
+
+
+const ws = XLSX.utils.aoa_to_sheet(ws_data);
+
+const wb = XLSX.utils.book_new();
+
+XLSX.utils.book_append_sheet(wb, ws, 'Monthly Report');
+
+XLSX.writeFile(wb, `routine_report_${monthName}_${year}.xlsx`);
+
+});
 // --------------------------- Events ---------------------------
 todayBtn.addEventListener('click', ()=>{ selectedDateInput.value=todayKey(); updateAll(); });
 addCatBtn.addEventListener('click', addCategory);
